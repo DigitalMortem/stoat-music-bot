@@ -1,1 +1,2 @@
-stoat.py\nvk-audio-downloader
+git+https://github.com/MCausc78/stoat.py.git
+vk-audio-downloader
