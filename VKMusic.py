@@ -1,48 +1,49 @@
 import asyncio
 import os
 import tempfile
-from pathlib import Path
 
 import stoat
 from stoat.ext import commands
 import vk_audio
 
-TOKEN = os.getenv("BOT_TOKEN")  # Берём токен из переменных окружения Railway
+# Токен берётся только из переменных окружения (безопасно)
+TOKEN = os.getenv("BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("BOT_TOKEN не найден! Добавьте его в переменные окружения.")
 
 bot = commands.Bot(token=TOKEN, prefix="!")
 
 queue = []
 voice_client = None
-current_player = None
 
 vk = vk_audio.VKAudio()
 
 @bot.event
 async def on_ready():
-    print(f"✅ Бот {bot.user} запущен на Railway и готов к работе, Босс.")
+    print(f"✅ Музыкальный бот запущен и готов к работе, Босс. ({bot.user})")
 
 @bot.command()
 async def play(ctx, *, query: str):
     global voice_client
 
     if not ctx.author.voice:
-        await ctx.send("Вы должны быть в голосовом канале.")
+        await ctx.send("❗ Вы должны находиться в голосовом канале.")
         return
 
-    channel = ctx.author.voice.channel
     if voice_client is None or not voice_client.is_connected():
-        voice_client = await channel.connect()
+        voice_client = await ctx.author.voice.channel.connect()
 
     await ctx.send(f"🔍 Ищу в VK: **{query}**...")
 
     try:
         results = vk.search(query, count=1)
         if not results:
-            await ctx.send("❌ Трек не найден.")
+            await ctx.send("❌ Трек не найден в VK.")
             return
 
         track = results[0]
-        title = f"{track['artist']} - {track['title']}"
+        title = f"{track.get('artist', 'Unknown')} - {track.get('title', 'Unknown')}"
         await ctx.send(f"🎵 Найдено: **{title}**")
 
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
@@ -55,52 +56,41 @@ async def play(ctx, *, query: str):
             await play_next(ctx)
 
     except Exception as e:
-        await ctx.send(f"❌ Ошибка: {str(e)}")
+        await ctx.send(f"❌ Ошибка при обработке трека: {str(e)}")
 
 async def play_next(ctx):
-    global current_player
     if not queue:
+        await ctx.send("Очередь пуста.")
         return
 
     title, file_path = queue.pop(0)
     await ctx.send(f"▶️ Сейчас играет: **{title}**")
 
     source = stoat.FFmpegPCMAudio(file_path, executable="ffmpeg")
-    current_player = voice_client.play(source, after=lambda e: asyncio.create_task(after_play(ctx, file_path)))
+    voice_client.play(source, after=lambda e: asyncio.create_task(after_play(ctx, file_path)))
 
 async def after_play(ctx, file_path):
     if os.path.exists(file_path):
         os.remove(file_path)
+    await asyncio.sleep(0.5)
     await play_next(ctx)
-
-@bot.command()
-async def pause(ctx):
-    if voice_client and voice_client.is_playing():
-        voice_client.pause()
-        await ctx.send("⏸️ Приостановлено.")
-
-@bot.command()
-async def resume(ctx):
-    if voice_client and voice_client.is_paused():
-        voice_client.resume()
-        await ctx.send("▶️ Возобновлено.")
 
 @bot.command()
 async def stop(ctx):
     global queue
-    if voice_client:
+    if voice_client and voice_client.is_connected():
         voice_client.stop()
     queue.clear()
-    await ctx.send("⏹️ Остановлено.")
+    await ctx.send("⏹️ Воспроизведение остановлено, очередь очищена.")
 
 @bot.command()
 async def leave(ctx):
     global voice_client, queue
-    if voice_client:
+    if voice_client and voice_client.is_connected():
         await voice_client.disconnect()
         voice_client = None
     queue.clear()
-    await ctx.send("👋 Бот вышел из канала.")
+    await ctx.send("👋 Бот покинул голосовой канал.")
 
 if __name__ == "__main__":
     bot.run()
