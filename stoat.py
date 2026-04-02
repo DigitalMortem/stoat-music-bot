@@ -3,16 +3,15 @@ import os
 import tempfile
 
 import stoat
-from stoat.ext import commands
+from stoat.ext.commands import Bot, command
 import vk_audio
 
-# Токен берётся только из переменных окружения (безопасно)
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
-    raise ValueError("BOT_TOKEN не найден! Добавьте его в переменные окружения.")
+    raise ValueError("BOT_TOKEN не найден в переменных окружения!")
 
-bot = commands.Bot(token=TOKEN, prefix="!")
+bot = Bot(token=TOKEN, prefix="!")
 
 queue = []
 voice_client = None
@@ -21,7 +20,7 @@ vk = vk_audio.VKAudio()
 
 @bot.event
 async def on_ready():
-    print(f"✅ Музыкальный бот запущен и готов к работе, Босс. ({bot.user})")
+    print(f"✅ Музыкальный бот успешно запущен на Railway, Босс. ({bot.user})")
 
 @bot.command()
 async def play(ctx, *, query: str):
@@ -43,7 +42,7 @@ async def play(ctx, *, query: str):
             return
 
         track = results[0]
-        title = f"{track.get('artist', 'Unknown')} - {track.get('title', 'Unknown')}"
+        title = f"{track.get('artist', 'Unknown')} — {track.get('title', 'Unknown')}"
         await ctx.send(f"🎵 Найдено: **{title}**")
 
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
@@ -56,9 +55,10 @@ async def play(ctx, *, query: str):
             await play_next(ctx)
 
     except Exception as e:
-        await ctx.send(f"❌ Ошибка при обработке трека: {str(e)}")
+        await ctx.send(f"❌ Ошибка: {str(e)}")
 
 async def play_next(ctx):
+    global voice_client
     if not queue:
         await ctx.send("Очередь пуста.")
         return
@@ -81,7 +81,7 @@ async def stop(ctx):
     if voice_client and voice_client.is_connected():
         voice_client.stop()
     queue.clear()
-    await ctx.send("⏹️ Воспроизведение остановлено, очередь очищена.")
+    await ctx.send("⏹️ Воспроизведение остановлено.")
 
 @bot.command()
 async def leave(ctx):
